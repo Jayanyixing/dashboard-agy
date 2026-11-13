@@ -15,6 +15,9 @@ const prefersReducedMotion =
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)');
 
+const gsapLib = typeof window !== 'undefined' ? window.gsap : null;
+const DrawSVGPluginLib = typeof window !== 'undefined' ? window.DrawSVGPlugin : null;
+
 const state = {
   homeConversationId: initialConversationId,
   selectedConversationId: initialConversationId,
@@ -30,6 +33,20 @@ const state = {
   lastTurnsKey: '',
   eventSource: null,
   reconnectTimer: null,
+  reduceMotion: Boolean(prefersReducedMotion?.matches),
+  hasPlayedEntrance: false,
+  entranceTl: null,
+  prevTurnCount: 0,
+  justExpandedTurn: null,
+  justSorted: false,
+  counters: {
+    ctxUsed: null,
+    ctxPct: null,
+    totalTok: null,
+    cacheHit: null,
+    avgSpeed: null,
+  },
+  counterTweens: new Map(),
 };
 
 const els = {
@@ -75,6 +92,8 @@ const els = {
   durationValue: document.getElementById('duration-value'),
   trajPanel: document.getElementById('trajectory-panel'),
   trajReadout: document.getElementById('traj-readout'),
+  trajYTokMax: document.getElementById('traj-y-tok-max'),
+  trajYTokMid: document.getElementById('traj-y-tok-mid'),
   trajArea: document.getElementById('traj-area'),
   trajPolyline: document.getElementById('traj-polyline'),
   trajHits: document.getElementById('traj-hits'),
@@ -120,12 +139,231 @@ function fmtDuration(ms) {
   return `${hr}h ${min % 60}m`;
 }
 
-function setRingProgress(circleEl, radius, pct) {
+function canAnimate() {
+  return Boolean(gsapLib && !state.reduceMotion);
+}
+
+function initMotion() {
+  if (!gsapLib) return;
+  document.documentElement.classList.add('has-gsap');
+  if (DrawSVGPluginLib) {
+    gsapLib.registerPlugin(DrawSVGPluginLib);
+  }
+  gsapLib.defaults({ ease: 'power2.out', duration: 0.35 });
+  const mm = gsapLib.matchMedia();
+  mm.add(
+    { reduceMotion: '(prefers-reduced-motion: reduce)' },
+    (context) => {
+      state.reduceMotion = Boolean(context.conditions?.reduceMotion);
+    }
+  );
+}
+
+function resetMotionCounters() {
+  state.entranceTl?.kill();
+  state.entranceTl = null;
+  for (const tw of state.counterTweens.values()) {
+    tw?.kill();
+  }
+  state.counterTweens.clear();
+  for (const key of Object.keys(state.counters)) {
+    state.counters[key] = null;
+  }
+  state.hasPlayedEntrance = false;
+  state.prevTurnCount = 0;
+  state.justExpandedTurn = null;
+  state.justSorted = false;
+  if (els.miniRingFill) delete els.miniRingFill.dataset.ringReady;
+  if (els.bigRingFill) delete els.bigRingFill.dataset.ringReady;
+}
+
+function tweenMetric(key, nextValue, fromZero, formatter, targetEls) {
+  const list = Array.isArray(targetEls) ? targetEls : [targetEls];
+  const applyText = (text) => {
+    for (const el of list) {
+      if (el) el.textContent = text;
+    }
+  };
+
+  if (nextValue === null || !Number.isFinite(nextValue)) {
+    state.counterTweens.get(key)?.kill();
+    state.counterTweens.delete(key);
+    state.counters[key] = null;
+    applyText(formatter(null));
+    return;
+  }
+
+  if (!canAnimate()) {
+    state.counterTweens.get(key)?.kill();
+    state.counterTweens.delete(key);
+    state.counters[key] = nextValue;
+    applyText(formatter(nextValue));
+    return;
+  }
+
+  const prev = state.counters[key];
+  const startValue = fromZero || prev === null ? 0 : prev;
+  if (!fromZero && prev !== null && Math.abs(nextValue - startValue) < 1e-6) {
+    applyText(formatter(nextValue));
+    return;
+  }
+
+  state.counterTweens.get(key)?.kill();
+  const proxy = { val: startValue };
+  const tw = gsapLib.to(proxy, {
+    val: nextValue,
+    duration: fromZero ? 0.6 : 0.34,
+    ease: fromZero ? 'power3.out' : 'power2.out',
+    onUpdate() {
+      state.counters[key] = proxy.val;
+      applyText(formatter(proxy.val));
+    },
+    onComplete() {
+      state.counters[key] = nextValue;
+      applyText(formatter(nextValue));
+    },
+  });
+  state.counterTweens.set(key, tw);
+}
+
+function playDeckEntrance() {
+  if (!canAnimate()) return;
+  state.entranceTl?.kill();
+
+  const tl = gsapLib.timeline({ defaults: { ease: 'power3.out' } });
+  state.entranceTl = tl;
+
+  const dshEl = document.querySelector('.dsh-strip');
+  if (dshEl && getComputedStyle(dshEl).display !== 'none') {
+    tl.from(
+      dshEl,
+      { y: -6, autoAlpha: 0, duration: 0.28, clearProps: 'transform,opacity,visibility' },
+      0
+    );
+  }
+
+  tl.from(
+    '.kpi-bay',
+    {
+      y: 12,
+      autoAlpha: 0,
+      duration: 0.38,
+      stagger: 0.06,
+      clearProps: 'transform,opacity,visibility',
+    },
+    0
+  );
+
+  tl.from(
+    '.token-mix-bar',
+    {
+      scaleX: 0,
+      transformOrigin: '0% 50%',
+      duration: 0.45,
+      ease: 'power2.out',
+      clearProps: 'transform',
+    },
+    0.14
+  );
+
+  if (!els.trajPanel.hidden) {
+    if (DrawSVGPluginLib && els.trajPolyline.getAttribute('points')) {
+      tl.fromTo(
+        els.trajPolyline,
+        { drawSVG: '0% 0%' },
+        {
+          drawSVG: '0% 100%',
+          duration: 0.58,
+          ease: 'power2.inOut',
+          clearProps: 'strokeDasharray,strokeDashoffset',
+        },
+        0.12
+      );
+    }
+    if (els.trajArea.getAttribute('points')) {
+      tl.fromTo(
+        els.trajArea,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.45, ease: 'power2.out', clearProps: 'opacity' },
+        0.22
+      );
+    }
+    const bars = gsapLib.utils.toArray('#traj-hits .traj-bar');
+    if (bars.length) {
+      tl.from(
+        bars,
+        {
+          scaleY: 0,
+          transformOrigin: '50% 100%',
+          duration: 0.38,
+          stagger: { amount: 0.22, from: 'start' },
+          clearProps: 'transform',
+        },
+        0.12
+      );
+    }
+    const dots = gsapLib.utils.toArray('#traj-hits .traj-dot');
+    if (dots.length) {
+      tl.from(
+        dots,
+        {
+          xPercent: -50,
+          yPercent: 50,
+          scale: 0,
+          autoAlpha: 0,
+          duration: 0.24,
+          stagger: { amount: 0.22, from: 'start' },
+          ease: 'back.out(1.7)',
+          clearProps: 'transform,opacity,visibility',
+        },
+        0.24
+      );
+    }
+  }
+
+  const initRows = gsapLib.utils.toArray('#turns-tbody tr.turn-row').slice(0, 12);
+  if (initRows.length) {
+    tl.from(
+      initRows,
+      {
+        y: 8,
+        autoAlpha: 0,
+        duration: 0.26,
+        stagger: 0.024,
+        clearProps: 'transform,opacity,visibility',
+      },
+      0.18
+    );
+  }
+}
+
+function setRingProgress(circleEl, radius, pct, fromZero = false) {
   if (!circleEl) return;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+  const targetOffset = circumference * (1 - clamped / 100);
   circleEl.style.strokeDasharray = `${circumference}`;
-  circleEl.style.strokeDashoffset = `${circumference * (1 - clamped / 100)}`;
+
+  if (canAnimate()) {
+    const firstSweep = fromZero || !circleEl.dataset.ringReady;
+    circleEl.dataset.ringReady = '1';
+    if (firstSweep) {
+      gsapLib.fromTo(
+        circleEl,
+        { strokeDashoffset: circumference },
+        { strokeDashoffset: targetOffset, duration: 0.65, ease: 'power3.out', overwrite: 'auto' }
+      );
+    } else {
+      gsapLib.to(circleEl, {
+        strokeDashoffset: targetOffset,
+        duration: 0.32,
+        ease: 'power2.out',
+        overwrite: 'auto',
+      });
+    }
+  } else {
+    circleEl.style.strokeDashoffset = `${targetOffset}`;
+  }
 
   circleEl.classList.remove('is-warn', 'is-bad');
   if (clamped >= 85) {
@@ -160,6 +398,7 @@ function selectConversation(conversationId) {
     els.convPopover?.hidePopover?.();
     return;
   }
+  resetMotionCounters();
   state.selectedConversationId = conversationId;
   state.expandedTurns.clear();
   state.highlightedTurn = null;
@@ -276,14 +515,49 @@ function formatTurnHoverReadout(turn) {
   return `#${turn.turnNumber} · ${fmtTokens(turn.totalTokens)} tok · 命中 ${cacheStr} · 上下文 ${ctxStr}`;
 }
 
+function pulseTrajReadout() {
+  if (!canAnimate() || !els.trajReadout) return;
+  gsapLib.fromTo(
+    els.trajReadout,
+    { opacity: 0.65, x: -3 },
+    { opacity: 1, x: 0, duration: 0.18, ease: 'power2.out', overwrite: 'auto', clearProps: 'transform,opacity' }
+  );
+}
+
+function animateNewTurnArrival(turnNumber) {
+  if (!canAnimate()) return;
+  const lastBar = els.trajHits.querySelector('.traj-hit:last-child .traj-bar');
+  if (lastBar) {
+    gsapLib.from(lastBar, {
+      scaleY: 0.15,
+      transformOrigin: '50% 100%',
+      duration: 0.35,
+      ease: 'back.out(1.5)',
+      clearProps: 'transform',
+    });
+  }
+  const newRow = els.turnsTbody.querySelector(`tr.turn-row[data-turn="${turnNumber}"]`);
+  if (newRow) {
+    gsapLib.from(newRow, {
+      y: -6,
+      autoAlpha: 0,
+      duration: 0.28,
+      ease: 'power2.out',
+      clearProps: 'transform,opacity,visibility',
+    });
+  }
+}
+
 function focusTurnFromTrajectory(turnNumber) {
   const wasHighlighted = state.highlightedTurn === turnNumber;
   if (wasHighlighted && state.expandedTurns.has(turnNumber)) {
     state.expandedTurns.delete(turnNumber);
     state.highlightedTurn = null;
+    state.justExpandedTurn = null;
   } else {
     state.highlightedTurn = turnNumber;
     state.expandedTurns.add(turnNumber);
+    state.justExpandedTurn = turnNumber;
   }
   if (state.lastSnapshot) {
     renderTrajectory(state.lastSnapshot.telemetry.turns, state.lastSnapshot.telemetry.summary, true);
@@ -317,12 +591,18 @@ function renderTrajectory(turns, summary, forceRender = false) {
   const n = list.length;
   const maxTurnTokens = Math.max(1, ...list.map((t) => t.totalTokens || 0));
   const peakCtxPct = Math.max(0, ...list.map((t) => t.endContextPercent || 0));
-  const ctxScaleMax = Math.max(20, Math.min(100, peakCtxPct * 1.15));
   const defaultReadout = formatTrajectorySummary(
     list,
     maxTurnTokens,
     summary?.contextUsagePercent ?? peakCtxPct
   );
+
+  if (els.trajYTokMax) {
+    els.trajYTokMax.textContent = fmtTokens(maxTurnTokens);
+  }
+  if (els.trajYTokMid) {
+    els.trajYTokMid.textContent = fmtTokens(maxTurnTokens / 2);
+  }
 
   const highlightedObj =
     state.highlightedTurn !== null
@@ -333,7 +613,19 @@ function renderTrajectory(turns, summary, forceRender = false) {
     : defaultReadout;
 
   els.trajAxisStart.textContent = `#${list[0].turnNumber}`;
-  els.trajAxisMid.textContent = n >= 5 ? `#${list[Math.floor((n - 1) / 2)].turnNumber}` : '';
+  if (n === 1) {
+    els.trajAxisStart.dataset.single = '1';
+  } else {
+    delete els.trajAxisStart.dataset.single;
+  }
+  if (n >= 5) {
+    const midIdx = Math.floor((n - 1) / 2);
+    els.trajAxisMid.textContent = `#${list[midIdx].turnNumber}`;
+    els.trajAxisMid.style.insetInlineStart = `${(((midIdx + 0.5) / n) * 100).toFixed(2)}%`;
+  } else {
+    els.trajAxisMid.textContent = '';
+    els.trajAxisMid.style.insetInlineStart = '';
+  }
   els.trajAxisEnd.textContent = n > 1 ? `#${list[n - 1].turnNumber}` : '';
 
   const polyPoints = [];
@@ -341,13 +633,13 @@ function renderTrajectory(turns, summary, forceRender = false) {
 
   for (let i = 0; i < n; i++) {
     const turn = list[i];
-    const normCtx = Math.max(0, Math.min(1, (turn.endContextPercent || 0) / ctxScaleMax));
+    const normCtx = Math.max(0, Math.min(1, (turn.endContextPercent || 0) / 100));
     const xSvg = ((i + 0.5) / n) * 1000;
-    const ySvg = 88 - normCtx * 73;
+    const ySvg = 88 - normCtx * 76;
     polyPoints.push(`${xSvg.toFixed(1)},${ySvg.toFixed(1)}`);
 
     const barPct =
-      turn.totalTokens > 0 ? Math.max(6, Math.round((turn.totalTokens / maxTurnTokens) * 100)) : 0;
+      turn.totalTokens > 0 ? Math.min(100, (turn.totalTokens / maxTurnTokens) * 100) : 0;
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -360,7 +652,8 @@ function renderTrajectory(turns, summary, forceRender = false) {
 
     const bar = document.createElement('span');
     bar.className = 'traj-bar';
-    bar.style.blockSize = `${barPct}%`;
+    bar.style.blockSize = barPct > 0 ? `${barPct.toFixed(2)}%` : '0%';
+    if (barPct > 0) bar.dataset.nonzero = '1';
     btn.appendChild(bar);
 
     const dot = document.createElement('span');
@@ -369,14 +662,22 @@ function renderTrajectory(turns, summary, forceRender = false) {
     btn.appendChild(dot);
 
     const showHover = () => {
-      els.trajReadout.textContent = formatTurnHoverReadout(turn);
+      const nextText = formatTurnHoverReadout(turn);
+      if (els.trajReadout.textContent !== nextText) {
+        els.trajReadout.textContent = nextText;
+        pulseTrajReadout();
+      }
     };
     const restoreDefault = () => {
       const active =
         state.highlightedTurn !== null
           ? list.find((t) => t.turnNumber === state.highlightedTurn)
           : null;
-      els.trajReadout.textContent = active ? formatTurnHoverReadout(active) : defaultReadout;
+      const nextText = active ? formatTurnHoverReadout(active) : defaultReadout;
+      if (els.trajReadout.textContent !== nextText) {
+        els.trajReadout.textContent = nextText;
+        pulseTrajReadout();
+      }
     };
 
     btn.addEventListener('mouseenter', showHover);
@@ -396,6 +697,10 @@ function renderTrajectory(turns, summary, forceRender = false) {
   } else {
     els.trajPolyline.setAttribute('points', '');
     els.trajArea.setAttribute('points', '');
+  }
+
+  if (gsapLib && state.hasPlayedEntrance) {
+    gsapLib.set(els.trajPolyline, { clearProps: 'strokeDasharray,strokeDashoffset' });
   }
 
   els.trajHits.replaceChildren(fragment);
@@ -537,9 +842,11 @@ function renderTurnsTable(turns, forceRender = false) {
       if (state.expandedTurns.has(turn.turnNumber)) {
         state.expandedTurns.delete(turn.turnNumber);
         if (state.highlightedTurn === turn.turnNumber) state.highlightedTurn = null;
+        state.justExpandedTurn = null;
       } else {
         state.expandedTurns.add(turn.turnNumber);
         state.highlightedTurn = turn.turnNumber;
+        state.justExpandedTurn = turn.turnNumber;
       }
       if (state.lastSnapshot) {
         renderTrajectory(state.lastSnapshot.telemetry.turns, state.lastSnapshot.telemetry.summary, true);
@@ -628,6 +935,50 @@ function renderTurnsTable(turns, forceRender = false) {
 
   els.turnsTbody.replaceChildren(fragment);
 
+  if (canAnimate()) {
+    if (state.justSorted) {
+      const rows = gsapLib.utils.toArray('#turns-tbody tr.turn-row').slice(0, 16);
+      if (rows.length) {
+        gsapLib.from(rows, {
+          y: state.sortDesc ? -6 : 6,
+          autoAlpha: 0.4,
+          duration: 0.22,
+          stagger: 0.014,
+          ease: 'power2.out',
+          clearProps: 'transform,opacity,visibility',
+        });
+      }
+    } else if (state.justExpandedTurn !== null) {
+      const expandedRow = els.turnsTbody.querySelector(`tr[data-turn="${state.justExpandedTurn}"]`);
+      const detailBox = expandedRow?.nextElementSibling?.querySelector('.turn-detail-box');
+      if (detailBox) {
+        const tl = gsapLib.timeline({ defaults: { ease: 'power2.out' } });
+        tl.from(detailBox, {
+          y: -6,
+          autoAlpha: 0,
+          duration: 0.22,
+          clearProps: 'transform,opacity,visibility',
+        });
+        const metricSpans = detailBox.querySelectorAll('.detail-metrics span');
+        if (metricSpans.length) {
+          tl.from(
+            metricSpans,
+            {
+              y: 4,
+              autoAlpha: 0,
+              duration: 0.18,
+              stagger: 0.02,
+              clearProps: 'transform,opacity,visibility',
+            },
+            '<0.04'
+          );
+        }
+      }
+    }
+  }
+  state.justExpandedTurn = null;
+  state.justSorted = false;
+
   if (truncationObserver) {
     for (const label of labelsToObserve) {
       label.classList.toggle('truncated', label.scrollWidth > label.clientWidth);
@@ -653,6 +1004,8 @@ function renderTokenMix(s) {
 }
 
 function renderSnapshot(snapshot) {
+  const isInitialEntrance = !state.hasPlayedEntrance;
+  const prevTurnCount = state.prevTurnCount;
   state.lastSnapshot = snapshot;
   renderConversationOptions(snapshot.conversations, snapshot.activeConversationId);
   updateUnifiedStatusBadge();
@@ -663,23 +1016,31 @@ function renderSnapshot(snapshot) {
   els.modelNameText.textContent = t.modelName;
   els.windowCapText.textContent = `窗口 ${t.windowLabel}`;
 
-  const speedText =
-    s.avgTokPerSec !== null ? `~${Math.round(s.avgTokPerSec)} tok/s` : '-- tok/s';
   const cacheText =
     s.cacheHitRate !== null ? `命中 ${fmtPct(s.cacheHitRate, 0)}` : '命中 --%';
   const ctxPctText = fmtPct(s.contextUsagePercent, 1);
 
   els.dshTurnsSpeed.textContent = `${s.totalTurns} 轮 ${s.totalSteps} 步`;
-  els.dshSpeedVal.textContent = speedText;
   els.dshTokensCache.textContent = `${fmtTokens(s.grandTotalTokens)} tok`;
   els.dshCacheVal.textContent = cacheText;
-  els.dshContextPct.textContent = ctxPctText;
 
-  setRingProgress(els.miniRingFill, 7, s.contextUsagePercent);
-  setRingProgress(els.bigRingFill, 37, s.contextUsagePercent);
+  setRingProgress(els.miniRingFill, 7, s.contextUsagePercent, isInitialEntrance);
+  setRingProgress(els.bigRingFill, 37, s.contextUsagePercent, isInitialEntrance);
 
-  els.contextPctValue.textContent = ctxPctText;
-  els.contextUsedValue.textContent = fmtTokens(s.currentContextTokens);
+  tweenMetric(
+    'ctxPct',
+    s.contextUsagePercent,
+    isInitialEntrance,
+    (v) => fmtPct(v, 1),
+    [els.contextPctValue, els.dshContextPct]
+  );
+  tweenMetric(
+    'ctxUsed',
+    s.currentContextTokens,
+    isInitialEntrance,
+    (v) => fmtTokens(v),
+    els.contextUsedValue
+  );
   els.contextCapValue.textContent = `/ ${fmtTokens(t.windowSize)}`;
   const remaining = Math.max(0, t.windowSize - s.currentContextTokens);
   const remPct = Math.max(0, 100 - s.contextUsagePercent);
@@ -698,9 +1059,21 @@ function renderSnapshot(snapshot) {
     els.contextStateBadge.textContent = '● 正常';
   }
 
-  els.totalTokensValue.textContent = fmtTokens(s.grandTotalTokens);
+  tweenMetric(
+    'totalTok',
+    s.grandTotalTokens,
+    isInitialEntrance,
+    (v) => fmtTokens(v),
+    els.totalTokensValue
+  );
   const cachePct = s.cacheHitRate;
-  els.cacheHitValue.textContent = cachePct !== null ? fmtPct(cachePct, 1) : '--%';
+  tweenMetric(
+    'cacheHit',
+    cachePct,
+    isInitialEntrance,
+    (v) => (v !== null ? fmtPct(v, 1) : '--%'),
+    els.cacheHitValue
+  );
   els.cacheHitValue.classList.remove('tone-ok', 'tone-warn', 'tone-bad');
 
   renderTokenMix(s);
@@ -731,8 +1104,13 @@ function renderSnapshot(snapshot) {
     s.throughputSource === 'hook_ms' ? '精确计时' : '估算速率';
   els.turnsStepsValue.textContent = `${s.totalTurns} 轮 / ${s.totalSteps} 步`;
   els.tokenCallsNote.textContent = `${s.modelCallCount} 次调用`;
-  els.avgSpeedValue.textContent =
-    s.avgTokPerSec !== null ? `~${Math.round(s.avgTokPerSec)} tok/s` : '-- tok/s';
+  tweenMetric(
+    'avgSpeed',
+    s.avgTokPerSec,
+    isInitialEntrance,
+    (v) => (v !== null ? `~${Math.round(v)} tok/s` : '-- tok/s'),
+    [els.avgSpeedValue, els.dshSpeedVal]
+  );
   els.latestSpeedValue.textContent =
     s.latestStepTokPerSec !== null ? `~${Math.round(s.latestStepTokPerSec)} tok/s` : '-- tok/s';
   els.stepsSplitValue.textContent = `${s.modelCallCount} / ${s.toolStepCount} 步`;
@@ -740,6 +1118,15 @@ function renderSnapshot(snapshot) {
 
   renderTrajectory(t.turns, s);
   renderTurnsTable(t.turns);
+
+  if (isInitialEntrance) {
+    state.hasPlayedEntrance = true;
+    playDeckEntrance();
+  } else if (t.turns.length > prevTurnCount && prevTurnCount > 0) {
+    const latestTurn = t.turns[t.turns.length - 1];
+    if (latestTurn) animateNewTurnArrival(latestTurn.turnNumber);
+  }
+  state.prevTurnCount = t.turns.length;
 }
 
 function buildApiUrl(endpoint) {
@@ -813,6 +1200,34 @@ function connectEvents() {
   };
 }
 
+els.convPopover?.addEventListener('toggle', (event) => {
+  if (event.newState !== 'open' || !canAnimate()) return;
+  gsapLib.fromTo(
+    els.convPopover,
+    { y: -6, scale: 0.985, opacity: 0 },
+    {
+      y: 0,
+      scale: 1,
+      opacity: 1,
+      duration: 0.2,
+      ease: 'power3.out',
+      overwrite: 'auto',
+      clearProps: 'transform,opacity',
+    }
+  );
+  const visibleOpts = gsapLib.utils.toArray('#conversation-list .conv-option').slice(0, 10);
+  if (visibleOpts.length) {
+    gsapLib.from(visibleOpts, {
+      x: -4,
+      opacity: 0,
+      duration: 0.18,
+      stagger: 0.014,
+      ease: 'power2.out',
+      clearProps: 'transform,opacity',
+    });
+  }
+});
+
 els.windowSelect.addEventListener('change', () => {
   state.windowSizeOverride = els.windowSelect.value;
   connectEvents();
@@ -821,10 +1236,12 @@ els.windowSelect.addEventListener('change', () => {
 
 els.sortToggleBtn.addEventListener('click', () => {
   state.sortDesc = !state.sortDesc;
+  state.justSorted = true;
   if (state.lastSnapshot) {
     renderTurnsTable(state.lastSnapshot.telemetry.turns, true);
   }
 });
 
+initMotion();
 fetchSnapshotOnce();
 connectEvents();

@@ -196,6 +196,12 @@ test('sidecar HTTP server serves UI, enforces token on /api/*, and pushes SSE te
     assert.equal(uiRes.status, 200);
     const uiHtml = await uiRes.text();
     assert.match(uiHtml, /\/styles\.css\?token=secret-tok&conversationId=conv-abc/);
+    assert.match(uiHtml, /\/vendor\/gsap\.min\.js\?token=secret-tok&conversationId=conv-abc/);
+
+    const gsapRes = await fetch(`${base}/vendor/gsap.min.js`);
+    assert.equal(gsapRes.status, 200);
+    const drawSvgRes = await fetch(`${base}/vendor/DrawSVGPlugin.min.js`);
+    assert.equal(drawSvgRes.status, 200);
 
     const unauth = await fetch(`${base}/api/telemetry`);
     assert.equal(unauth.status, 401);

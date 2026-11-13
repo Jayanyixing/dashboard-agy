@@ -595,6 +595,10 @@ body {
   transition: stroke-dashoffset 220ms ease, stroke 180ms ease;
 }
 
+.has-gsap .ring-fill {
+  transition: stroke 180ms ease;
+}
+
 .ring-fill.is-warn {
   stroke: var(--status-warn);
 }
@@ -956,9 +960,48 @@ body {
   background-color: var(--status-ok);
 }
 
+.traj-chart-frame {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: 84px auto;
+  column-gap: 6px;
+  row-gap: 3px;
+  align-items: stretch;
+}
+
+.traj-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  block-size: 84px;
+  padding-block: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.traj-y-left {
+  grid-column: 1;
+  grid-row: 1;
+  text-align: end;
+  color: color-mix(in srgb, var(--accent) 58%, var(--ink-muted));
+}
+
+.traj-y-right {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: start;
+  color: color-mix(in srgb, var(--status-ok) 62%, var(--ink-muted));
+}
+
 .traj-canvas {
+  grid-column: 2;
+  grid-row: 1;
   position: relative;
-  block-size: 76px;
+  block-size: 84px;
   inline-size: 100%;
 }
 
@@ -990,7 +1033,7 @@ body {
 
 .traj-hits {
   position: absolute;
-  inset: 15% 0 12% 0;
+  inset: 12% 0 12% 0;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
@@ -1038,6 +1081,10 @@ body {
   transition: background-color 140ms ease, block-size 200ms ease;
 }
 
+.traj-bar[data-nonzero="1"] {
+  min-block-size: 2px;
+}
+
 .traj-hit:hover .traj-bar,
 .traj-hit:focus-visible .traj-bar,
 .traj-hit[aria-pressed="true"] .traj-bar {
@@ -1065,13 +1112,38 @@ body {
 }
 
 .traj-axis {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  block-size: 15px;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 15px;
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+.traj-axis span {
+  position: absolute;
+  inset-block-start: 0;
+  white-space: nowrap;
+}
+
+.traj-axis #traj-axis-start {
+  inset-inline-start: 0;
+}
+
+.traj-axis #traj-axis-start[data-single="1"] {
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+}
+
+.traj-axis #traj-axis-mid {
+  transform: translateX(-50%);
+}
+
+.traj-axis #traj-axis-end {
+  inset-inline-end: 0;
 }
 
 /* Per-Turn Telemetry Log */

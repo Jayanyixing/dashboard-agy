@@ -8,6 +8,8 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/preload.js"></script>
+    <script src="/vendor/gsap.min.js"></script>
+    <script src="/vendor/DrawSVGPlugin.min.js"></script>
     <script type="module" src="/app.js"></script>
   </head>
   <body>
@@ -195,20 +197,32 @@
               <span class="legend-item"><i class="legend-line"></i>上下文爬坡</span>
             </div>
           </div>
-          <div class="traj-canvas" id="traj-canvas">
-            <svg class="traj-svg" id="traj-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
-              <line class="traj-gridline" x1="0" y1="15" x2="1000" y2="15" vector-effect="non-scaling-stroke"/>
-              <line class="traj-gridline" x1="0" y1="50" x2="1000" y2="50" vector-effect="non-scaling-stroke"/>
-              <line class="traj-gridline" x1="0" y1="88" x2="1000" y2="88" vector-effect="non-scaling-stroke"/>
-              <polygon class="traj-area" id="traj-area" points=""/>
-              <polyline class="traj-polyline" id="traj-polyline" points="" fill="none" vector-effect="non-scaling-stroke"/>
-            </svg>
-            <div class="traj-hits" id="traj-hits"></div>
-          </div>
-          <div class="traj-axis" id="traj-axis" aria-hidden="true">
-            <span id="traj-axis-start">#1</span>
-            <span id="traj-axis-mid"></span>
-            <span id="traj-axis-end">#1</span>
+          <div class="traj-chart-frame">
+            <div class="traj-y-axis traj-y-left" aria-hidden="true">
+              <span id="traj-y-tok-max">--</span>
+              <span id="traj-y-tok-mid">--</span>
+              <span>0</span>
+            </div>
+            <div class="traj-canvas" id="traj-canvas">
+              <svg class="traj-svg" id="traj-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
+                <line class="traj-gridline" x1="0" y1="12" x2="1000" y2="12" vector-effect="non-scaling-stroke"/>
+                <line class="traj-gridline" x1="0" y1="50" x2="1000" y2="50" vector-effect="non-scaling-stroke"/>
+                <line class="traj-gridline" x1="0" y1="88" x2="1000" y2="88" vector-effect="non-scaling-stroke"/>
+                <polygon class="traj-area" id="traj-area" points=""/>
+                <polyline class="traj-polyline" id="traj-polyline" points="" fill="none" vector-effect="non-scaling-stroke"/>
+              </svg>
+              <div class="traj-hits" id="traj-hits"></div>
+            </div>
+            <div class="traj-y-axis traj-y-right" aria-hidden="true">
+              <span>100%</span>
+              <span>50%</span>
+              <span>0%</span>
+            </div>
+            <div class="traj-axis" id="traj-axis" aria-hidden="true">
+              <span id="traj-axis-start">#1</span>
+              <span id="traj-axis-mid"></span>
+              <span id="traj-axis-end">#1</span>
+            </div>
           </div>
         </div>
       </section>

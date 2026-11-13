@@ -26,6 +26,13 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
 };
 
+const STATIC_PUBLIC_PATHS = new Set([
+  '/styles.css',
+  '/app.js',
+  '/vendor/gsap.min.js',
+  '/vendor/DrawSVGPlugin.min.js',
+]);
+
 function readPreloadJs(appDataDir) {
   const candidates = [
     path.join(appDataDir, 'lib', 'node_modules', 'sidecar_sdk', 'preload.js'),
@@ -290,7 +297,7 @@ export function createTelemetrySidecar(options = {}) {
       return;
     }
 
-    if (req.method === 'GET' && (pathname === '/styles.css' || pathname === '/app.js')) {
+    if (req.method === 'GET' && STATIC_PUBLIC_PATHS.has(pathname)) {
       const target = path.join(publicDir, pathname.slice(1));
       const ext = path.extname(target);
       try {
