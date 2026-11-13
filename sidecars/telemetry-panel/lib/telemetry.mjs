@@ -23,7 +23,12 @@ export function resolveHookDataDir(appDataDir) {
   const pluginData = process.env.PLUGIN_DATA?.trim();
   if (pluginData) return pluginData;
   const resolvedApp = resolveAppDataDir(appDataDir);
-  return path.join(resolvedApp, 'sidecar_data', 'dashboard-agy');
+  const pluginDataDir = path.join(resolvedApp, 'plugin_data', 'dashboard-agy');
+  const legacySidecarDir = path.join(resolvedApp, 'sidecar_data', 'dashboard-agy');
+  if (fs.existsSync(pluginDataDir) || !fs.existsSync(legacySidecarDir)) {
+    return pluginDataDir;
+  }
+  return legacySidecarDir;
 }
 
 export function resolveContextWindowSize(modelName, overrideWindowSize) {
@@ -49,7 +54,7 @@ export function formatCompactTokens(num) {
   return String(Math.round(num));
 }
 
-export function extractUserPromptPreview(content) {
+export function extractUserPromptPreview(content, maxLen = 72) {
   if (typeof content !== 'string' || !content.trim()) return '';
   const userMatch = /<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/i.exec(content);
   const raw = userMatch ? userMatch[1] : content;
@@ -59,7 +64,7 @@ export function extractUserPromptPreview(content) {
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return '';
-  return cleaned.length > 72 ? `${cleaned.slice(0, 71)}…` : cleaned;
+  return cleaned.length > maxLen ? `${cleaned.slice(0, maxLen - 1)}…` : cleaned;
 }
 
 export function extractModelSelectionHint(content) {
@@ -193,6 +198,9 @@ export function parseTranscriptText(rawText, options = {}) {
         turnNumber: turns.length + 1,
         prompt: isExplicitUser
           ? extractUserPromptPreview(entry.content) || `Turn ${turns.length + 1}`
+          : 'Initial Context',
+        promptFull: isExplicitUser
+          ? extractUserPromptPreview(entry.content, 500) || `Turn ${turns.length + 1}`
           : 'Initial Context',
         startedAt: entry.created_at || null,
         endedAt: entry.created_at || null,
@@ -381,6 +389,7 @@ export function listConversations(appDataDir, hookDataDir, limit = 25) {
       if (!stat.isFile()) continue;
 
       let firstPrompt = '';
+      let isInternalSystemSession = false;
       try {
         const fd = fs.openSync(transcriptPath, 'r');
         const buf = Buffer.alloc(4096);
@@ -389,11 +398,17 @@ export function listConversations(appDataDir, hookDataDir, limit = 25) {
         const firstLine = buf.toString('utf-8', 0, bytesRead).split(/\r?\n/)[0];
         if (firstLine) {
           const parsed = JSON.parse(firstLine);
-          firstPrompt = extractUserPromptPreview(parsed.content);
+          if (parsed.type === 'SYSTEM_MESSAGE' || parsed.source === 'SYSTEM') {
+            isInternalSystemSession = true;
+          } else {
+            firstPrompt = extractUserPromptPreview(parsed.content);
+          }
         }
       } catch {
         // Ignore preview read errors.
       }
+
+      if (isInternalSystemSession) continue;
 
       results.push({
         conversationId: dir.name,
@@ -425,10 +440,10 @@ export function collectConversationTelemetry(options = {}) {
 
   if (!targetConvId || !getTranscriptPath(brainDir, targetConvId)) {
     const activeHook = readJsonSafe(path.join(hookDataDir, 'active_conversation.json'));
-    if (
+    const activeHookIsUserConv =
       activeHook?.conversationId &&
-      getTranscriptPath(brainDir, activeHook.conversationId)
-    ) {
+      conversations.some((c) => c.conversationId === activeHook.conversationId);
+    if (activeHookIsUserConv && getTranscriptPath(brainDir, activeHook.conversationId)) {
       targetConvId = activeHook.conversationId;
     } else if (conversations.length > 0) {
       targetConvId = conversations[0].conversationId;

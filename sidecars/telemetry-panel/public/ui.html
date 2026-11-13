@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Antigravity Telemetry Dashboard</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/preload.js"></script>
     <script type="module" src="/app.js"></script>
@@ -14,17 +15,39 @@
       <header class="topbar">
         <div class="topbar-title-group">
           <div class="brand-row">
-            <span class="live-dot" id="live-dot" aria-hidden="true"></span>
             <h1 class="app-title">Telemetry Dashboard</h1>
-            <span class="status-badge" id="sync-status">连接中…</span>
+            <span class="status-badge" id="sync-status">
+              <span class="live-dot" id="live-dot" aria-hidden="true"></span>
+              <span id="sync-status-text">连接中…</span>
+            </span>
           </div>
-          <p class="model-line" id="model-line">模型识别中…</p>
+          <p class="model-line">
+            <span id="model-name-text">模型识别中…</span>
+            <span class="meta-sep" aria-hidden="true">/</span>
+            <span id="window-cap-text">窗口检测中</span>
+          </p>
         </div>
         <div class="topbar-controls">
-          <label class="control-field">
+          <button
+            type="button"
+            class="control-field control-trigger"
+            id="conversation-trigger"
+            popovertarget="conversation-popover"
+            aria-label="切换会话"
+          >
             <span class="control-label">会话</span>
-            <select id="conversation-select" aria-label="选择会话"></select>
-          </label>
+            <span class="control-value" id="conversation-current-label">当前窗口</span>
+            <svg class="control-caret" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div id="conversation-popover" popover="auto" class="conv-popover" aria-label="选择会话列表">
+            <div class="conv-popover-head">
+              <span class="conv-popover-title">切换会话</span>
+              <span class="conv-popover-count" id="conv-popover-count">0 个会话</span>
+            </div>
+            <div class="conv-option-list" id="conversation-list"></div>
+          </div>
           <label class="control-field">
             <span class="control-label">窗口</span>
             <select id="window-select" aria-label="上下文窗口大小">
@@ -38,26 +61,19 @@
         </div>
       </header>
 
-      <!-- DSH-inspired single-line compact status strip -->
+      <!-- Compact DSH HUD shown only in narrow sidecar widths (< 560px) -->
       <section class="dsh-strip" aria-label="核心摘要栏">
         <div class="dsh-item">
-          <svg class="dsh-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M10 4a6 6 0 1 0 5.4 8.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M10 10l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <span class="dsh-text" id="dsh-turns-speed">0 轮 0 步 · -- tok/s</span>
+          <span class="dsh-text" id="dsh-turns-speed">0 轮 0 步</span>
+          <span class="dsh-sub" id="dsh-speed-val">-- tok/s</span>
         </div>
         <div class="dsh-sep" aria-hidden="true"></div>
         <div class="dsh-item">
-          <svg class="dsh-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <ellipse cx="10" cy="5.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M4.5 5.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M4.5 10c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.6"/>
-          </svg>
-          <span class="dsh-text" id="dsh-tokens-cache">0 tok · 缓存命中 --%</span>
+          <span class="dsh-text" id="dsh-tokens-cache">0 tok</span>
+          <span class="dsh-sub" id="dsh-cache-val">命中 --%</span>
         </div>
         <div class="dsh-sep" aria-hidden="true"></div>
-        <div class="dsh-item dsh-context-item">
+        <div class="dsh-item">
           <svg class="mini-ring" viewBox="0 0 20 20" aria-hidden="true">
             <circle class="ring-track" cx="10" cy="10" r="7" stroke-width="2.6" fill="none"/>
             <circle class="ring-fill" id="mini-ring-fill" cx="10" cy="10" r="7" stroke-width="2.6" fill="none" stroke-linecap="round"/>
@@ -66,126 +82,181 @@
         </div>
       </section>
 
-      <!-- KPI cards grid -->
-      <section class="kpi-grid" aria-label="关键指标">
-        <article class="kpi-card kpi-context">
-          <div class="card-head">
-            <span class="card-title">上下文窗口占用</span>
-            <span class="pill-badge" id="context-state-badge">● 正常</span>
-          </div>
-          <div class="context-body">
-            <div class="ring-wrap">
-              <svg class="big-ring" viewBox="0 0 88 88" aria-hidden="true">
-                <circle class="ring-track" cx="44" cy="44" r="36" stroke-width="7.5" fill="none"/>
-                <circle class="ring-fill" id="big-ring-fill" cx="44" cy="44" r="36" stroke-width="7.5" fill="none" stroke-linecap="round"/>
-              </svg>
-              <div class="ring-center">
-                <span class="ring-pct" id="context-pct-value">0%</span>
+      <!-- Unified Architectural Instrument Console + Trajectory Centerpiece -->
+      <section class="telemetry-deck" aria-label="关键指标与轮次轨迹">
+        <div class="deck-bays">
+          <article class="kpi-bay bay-context">
+            <div class="bay-head">
+              <span class="bay-title">上下文窗口</span>
+              <span class="pill-badge" id="context-state-badge">● 正常</span>
+            </div>
+            <div class="context-body">
+              <div class="ring-wrap">
+                <svg class="big-ring" viewBox="0 0 92 92" aria-hidden="true">
+                  <circle class="ring-track" cx="46" cy="46" r="37" stroke-width="6.5" fill="none"/>
+                  <circle class="ring-fill" id="big-ring-fill" cx="46" cy="46" r="37" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+                  <line class="ring-tick ring-tick-warn" x1="28.7" y1="69.9" x2="26.9" y2="72.3" stroke-width="1.4" stroke-linecap="round"/>
+                  <line class="ring-tick ring-tick-bad" x1="22.1" y1="28.7" x2="19.7" y2="26.9" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+                <div class="ring-center">
+                  <span class="ring-pct" id="context-pct-value">0%</span>
+                </div>
+              </div>
+              <div class="context-details">
+                <div class="metric-primary">
+                  <span id="context-used-value">0</span>
+                  <span class="metric-cap" id="context-cap-value">/ 1M</span>
+                </div>
+                <div class="metric-sub" id="context-remaining">剩余 1M (100%)</div>
+                <div class="metric-sub" id="context-peak">峰值 0 tok</div>
               </div>
             </div>
-            <div class="context-details">
-              <div class="metric-primary" id="context-fraction">0 / 1M</div>
-              <div class="metric-sub" id="context-remaining">剩余 1M (100%)</div>
-              <div class="metric-sub" id="context-peak">峰值：0 tok</div>
-            </div>
-          </div>
-        </article>
+          </article>
 
-        <article class="kpi-card">
-          <div class="card-head">
-            <span class="card-title">任务累计 Token</span>
-            <span class="card-note" id="token-calls-note">0 次模型调用</span>
-          </div>
-          <div class="metric-hero" id="total-tokens-value">0</div>
-          <div class="breakdown-list">
-            <div class="breakdown-row">
-              <span>缓存读取</span>
-              <strong id="cache-read-value">0</strong>
+          <article class="kpi-bay bay-tokens">
+            <div class="bay-head">
+              <span class="bay-title">Token 与缓存</span>
+              <span class="pill-badge" id="cache-state-badge">● 待记录</span>
             </div>
-            <div class="breakdown-row">
-              <span>非缓存输入</span>
-              <strong id="uncached-input-value">0</strong>
+            <div class="hero-pair">
+              <div class="metric-hero">
+                <span id="total-tokens-value">0</span>
+                <span class="metric-unit">tok</span>
+              </div>
+              <div class="hero-secondary">
+                <span class="hero-sec-label">命中</span>
+                <strong class="hero-sec-val" id="cache-hit-value">--%</strong>
+              </div>
             </div>
-            <div class="breakdown-row">
-              <span>模型输出</span>
-              <strong id="output-tokens-value">0</strong>
+            <div class="token-mix-bar" aria-label="Token 构成比例">
+              <span class="mix-seg mix-cache" id="mix-cache-seg"></span>
+              <span class="mix-seg mix-uncached" id="mix-uncached-seg"></span>
+              <span class="mix-seg mix-output" id="mix-output-seg"></span>
             </div>
-          </div>
-        </article>
+            <div class="breakdown-list">
+              <div class="breakdown-row">
+                <span class="row-label"><i class="swatch swatch-cache" aria-hidden="true"></i>缓存读取</span>
+                <strong id="cache-read-value">0</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label"><i class="swatch swatch-uncached" aria-hidden="true"></i>非缓存输入</span>
+                <strong id="uncached-input-value">0</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label"><i class="swatch swatch-output" aria-hidden="true"></i>模型输出</span>
+                <strong id="output-tokens-value">0</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label">最近一步命中</span>
+                <strong id="latest-cache-value">--%</strong>
+              </div>
+            </div>
+          </article>
 
-        <article class="kpi-card">
-          <div class="card-head">
-            <span class="card-title">缓存命中率</span>
-            <span class="pill-badge" id="cache-state-badge">● 待记录</span>
-          </div>
-          <div class="metric-hero" id="cache-hit-value">--%</div>
-          <div class="progress-bar" aria-hidden="true">
-            <div class="progress-fill" id="cache-hit-bar"></div>
-          </div>
-          <div class="breakdown-list">
-            <div class="breakdown-row">
-              <span>最近一步命中</span>
-              <strong id="latest-cache-value">--%</strong>
+          <article class="kpi-bay bay-throughput">
+            <div class="bay-head">
+              <span class="bay-title">轮次与吞吐</span>
+              <span class="bay-note" id="throughput-mode-note">估算速率</span>
             </div>
-            <div class="breakdown-row">
-              <span>总提示输入</span>
-              <strong id="total-input-value">0</strong>
+            <div class="hero-pair">
+              <div class="metric-hero" id="turns-steps-value">0 轮 / 0 步</div>
+              <span class="bay-note" id="token-calls-note">0 次调用</span>
             </div>
-          </div>
-        </article>
+            <div class="breakdown-list">
+              <div class="breakdown-row">
+                <span class="row-label">平均速率</span>
+                <strong id="avg-speed-value">-- tok/s</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label">最近一步</span>
+                <strong id="latest-speed-value">-- tok/s</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label">模型 / 工具</span>
+                <strong id="steps-split-value">0 / 0 步</strong>
+              </div>
+              <div class="breakdown-row">
+                <span class="row-label">会话耗时</span>
+                <strong id="duration-value">0s</strong>
+              </div>
+            </div>
+          </article>
+        </div>
 
-        <article class="kpi-card">
-          <div class="card-head">
-            <span class="card-title">轮次、步数与吞吐</span>
-            <span class="card-note" id="throughput-mode-note">端到端估算</span>
-          </div>
-          <div class="metric-hero" id="turns-steps-value">0 轮 / 0 步</div>
-          <div class="breakdown-list">
-            <div class="breakdown-row">
-              <span>平均输出速率</span>
-              <strong id="avg-speed-value">-- tok/s</strong>
+        <!-- Centerpiece: Interactive Per-Turn Burn & Context Trajectory -->
+        <div class="deck-trajectory" id="trajectory-panel" hidden>
+          <div class="traj-head">
+            <div class="traj-title-wrap">
+              <span class="bay-title">轮次轨迹</span>
+              <span class="traj-readout" id="traj-readout">--</span>
             </div>
-            <div class="breakdown-row">
-              <span>最近一步速率</span>
-              <strong id="latest-speed-value">-- tok/s</strong>
-            </div>
-            <div class="breakdown-row">
-              <span>会话耗时 / 工具步</span>
-              <strong id="duration-tools-value">0s · 0 步</strong>
+            <div class="traj-legend" aria-hidden="true">
+              <span class="legend-item"><i class="legend-bar"></i>单轮消耗</span>
+              <span class="legend-item"><i class="legend-line"></i>上下文爬坡</span>
             </div>
           </div>
-        </article>
+          <div class="traj-canvas" id="traj-canvas">
+            <svg class="traj-svg" id="traj-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
+              <line class="traj-gridline" x1="0" y1="15" x2="1000" y2="15" vector-effect="non-scaling-stroke"/>
+              <line class="traj-gridline" x1="0" y1="50" x2="1000" y2="50" vector-effect="non-scaling-stroke"/>
+              <line class="traj-gridline" x1="0" y1="88" x2="1000" y2="88" vector-effect="non-scaling-stroke"/>
+              <polygon class="traj-area" id="traj-area" points=""/>
+              <polyline class="traj-polyline" id="traj-polyline" points="" fill="none" vector-effect="non-scaling-stroke"/>
+            </svg>
+            <div class="traj-hits" id="traj-hits"></div>
+          </div>
+          <div class="traj-axis" id="traj-axis" aria-hidden="true">
+            <span id="traj-axis-start">#1</span>
+            <span id="traj-axis-mid"></span>
+            <span id="traj-axis-end">#1</span>
+          </div>
+        </div>
       </section>
 
-      <!-- Per-turn breakdown -->
-      <section class="turns-section" aria-label="每轮明细">
+      <!-- Per-turn telemetry log -->
+      <section class="turns-section" aria-labelledby="turns-section-title">
         <div class="section-header">
-          <div>
-            <h2 class="section-title">每轮明细</h2>
-            <p class="section-subtitle" id="turns-count-note">共 0 轮对话</p>
+          <div class="section-title-group">
+            <h2 class="section-title" id="turns-section-title">每轮明细</h2>
+            <span class="section-subtitle" id="turns-count-note">共 0 轮对话</span>
           </div>
           <button type="button" class="sort-btn" id="sort-toggle-btn">
             倒序（最新在前）
           </button>
         </div>
 
-        <div class="table-scroll" id="table-scroll">
+        <div
+          class="table-scroll"
+          id="table-scroll"
+          tabindex="0"
+          role="region"
+          aria-labelledby="turns-section-title"
+        >
           <table class="turns-table" id="turns-table">
+            <colgroup>
+              <col class="col-turn" />
+              <col class="col-prompt" />
+              <col class="col-steps" />
+              <col class="col-tokens" />
+              <col class="col-cache" />
+              <col class="col-ctx" />
+              <col class="col-speed" />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">轮次</th>
                 <th scope="col">内容摘要</th>
-                <th scope="col">步数</th>
-                <th scope="col">Token</th>
-                <th scope="col">缓存命中</th>
-                <th scope="col">上下文</th>
-                <th scope="col">速率(估)</th>
+                <th scope="col" class="num-col">步数</th>
+                <th scope="col" class="num-col">Token</th>
+                <th scope="col" class="num-col">缓存命中</th>
+                <th scope="col" class="num-col">上下文</th>
+                <th scope="col" class="num-col">输出速率</th>
               </tr>
             </thead>
             <tbody id="turns-tbody"></tbody>
           </table>
           <div class="empty-state" id="empty-state" hidden>
-            当前会话暂无可用轨迹记录。发送一条消息后这里会自动刷新。
+            当前会话暂无可用轨迹记录。在对话中发送消息后，这里会自动同步轮次与 Token 消耗。
           </div>
         </div>
       </section>
