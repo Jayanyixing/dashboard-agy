@@ -25,3 +25,7 @@ npm run dev
 ```bash
 npm run install-plugin
 ```
+
+## 开源协议
+
+[MIT](./LICENSE)

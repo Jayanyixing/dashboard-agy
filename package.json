@@ -1,6 +1,7 @@
 {
   "name": "dashboard-agy",
   "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "description": "Antigravity Sidecar UI telemetry dashboard plugin for live turns, steps, tokens, cache hit rate, and context window monitoring.",
   "scripts": {
