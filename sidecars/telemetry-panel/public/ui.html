@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Antigravity Telemetry Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/preload.js"></script>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="panel-root" id="panel-root">
+      <header class="topbar">
+        <div class="topbar-title-group">
+          <div class="brand-row">
+            <span class="live-dot" id="live-dot" aria-hidden="true"></span>
+            <h1 class="app-title">Telemetry Dashboard</h1>
+            <span class="status-badge" id="sync-status">连接中…</span>
+          </div>
+          <p class="model-line" id="model-line">模型识别中…</p>
+        </div>
+        <div class="topbar-controls">
+          <label class="control-field">
+            <span class="control-label">会话</span>
+            <select id="conversation-select" aria-label="选择会话"></select>
+          </label>
+          <label class="control-field">
+            <span class="control-label">窗口</span>
+            <select id="window-select" aria-label="上下文窗口大小">
+              <option value="">自动识别</option>
+              <option value="1048576">1M (1,048,576)</option>
+              <option value="200000">200K</option>
+              <option value="131072">128K (131,072)</option>
+              <option value="65536">64K</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <!-- DSH-inspired single-line compact status strip -->
+      <section class="dsh-strip" aria-label="核心摘要栏">
+        <div class="dsh-item">
+          <svg class="dsh-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 4a6 6 0 1 0 5.4 8.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M10 10l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="dsh-text" id="dsh-turns-speed">0 轮 0 步 · -- tok/s</span>
+        </div>
+        <div class="dsh-sep" aria-hidden="true"></div>
+        <div class="dsh-item">
+          <svg class="dsh-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <ellipse cx="10" cy="5.5" rx="5.5" ry="2.2" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M4.5 5.5v9c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2v-9" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M4.5 10c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+          <span class="dsh-text" id="dsh-tokens-cache">0 tok · 缓存命中 --%</span>
+        </div>
+        <div class="dsh-sep" aria-hidden="true"></div>
+        <div class="dsh-item dsh-context-item">
+          <svg class="mini-ring" viewBox="0 0 20 20" aria-hidden="true">
+            <circle class="ring-track" cx="10" cy="10" r="7" stroke-width="2.6" fill="none"/>
+            <circle class="ring-fill" id="mini-ring-fill" cx="10" cy="10" r="7" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          </svg>
+          <span class="dsh-text" id="dsh-context-pct">0%</span>
+        </div>
+      </section>
+
+      <!-- KPI cards grid -->
+      <section class="kpi-grid" aria-label="关键指标">
+        <article class="kpi-card kpi-context">
+          <div class="card-head">
+            <span class="card-title">上下文窗口占用</span>
+            <span class="pill-badge" id="context-state-badge">● 正常</span>
+          </div>
+          <div class="context-body">
+            <div class="ring-wrap">
+              <svg class="big-ring" viewBox="0 0 88 88" aria-hidden="true">
+                <circle class="ring-track" cx="44" cy="44" r="36" stroke-width="7.5" fill="none"/>
+                <circle class="ring-fill" id="big-ring-fill" cx="44" cy="44" r="36" stroke-width="7.5" fill="none" stroke-linecap="round"/>
+              </svg>
+              <div class="ring-center">
+                <span class="ring-pct" id="context-pct-value">0%</span>
+              </div>
+            </div>
+            <div class="context-details">
+              <div class="metric-primary" id="context-fraction">0 / 1M</div>
+              <div class="metric-sub" id="context-remaining">剩余 1M (100%)</div>
+              <div class="metric-sub" id="context-peak">峰值：0 tok</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="card-head">
+            <span class="card-title">任务累计 Token</span>
+            <span class="card-note" id="token-calls-note">0 次模型调用</span>
+          </div>
+          <div class="metric-hero" id="total-tokens-value">0</div>
+          <div class="breakdown-list">
+            <div class="breakdown-row">
+              <span>缓存读取</span>
+              <strong id="cache-read-value">0</strong>
+            </div>
+            <div class="breakdown-row">
+              <span>非缓存输入</span>
+              <strong id="uncached-input-value">0</strong>
+            </div>
+            <div class="breakdown-row">
+              <span>模型输出</span>
+              <strong id="output-tokens-value">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="card-head">
+            <span class="card-title">缓存命中率</span>
+            <span class="pill-badge" id="cache-state-badge">● 待记录</span>
+          </div>
+          <div class="metric-hero" id="cache-hit-value">--%</div>
+          <div class="progress-bar" aria-hidden="true">
+            <div class="progress-fill" id="cache-hit-bar"></div>
+          </div>
+          <div class="breakdown-list">
+            <div class="breakdown-row">
+              <span>最近一步命中</span>
+              <strong id="latest-cache-value">--%</strong>
+            </div>
+            <div class="breakdown-row">
+              <span>总提示输入</span>
+              <strong id="total-input-value">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="card-head">
+            <span class="card-title">轮次、步数与吞吐</span>
+            <span class="card-note" id="throughput-mode-note">端到端估算</span>
+          </div>
+          <div class="metric-hero" id="turns-steps-value">0 轮 / 0 步</div>
+          <div class="breakdown-list">
+            <div class="breakdown-row">
+              <span>平均输出速率</span>
+              <strong id="avg-speed-value">-- tok/s</strong>
+            </div>
+            <div class="breakdown-row">
+              <span>最近一步速率</span>
+              <strong id="latest-speed-value">-- tok/s</strong>
+            </div>
+            <div class="breakdown-row">
+              <span>会话耗时 / 工具步</span>
+              <strong id="duration-tools-value">0s · 0 步</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Per-turn breakdown -->
+      <section class="turns-section" aria-label="每轮明细">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">每轮明细</h2>
+            <p class="section-subtitle" id="turns-count-note">共 0 轮对话</p>
+          </div>
+          <button type="button" class="sort-btn" id="sort-toggle-btn">
+            倒序（最新在前）
+          </button>
+        </div>
+
+        <div class="table-scroll" id="table-scroll">
+          <table class="turns-table" id="turns-table">
+            <thead>
+              <tr>
+                <th scope="col">轮次</th>
+                <th scope="col">内容摘要</th>
+                <th scope="col">步数</th>
+                <th scope="col">Token</th>
+                <th scope="col">缓存命中</th>
+                <th scope="col">上下文</th>
+                <th scope="col">速率(估)</th>
+              </tr>
+            </thead>
+            <tbody id="turns-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="empty-state" hidden>
+            当前会话暂无可用轨迹记录。发送一条消息后这里会自动刷新。
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

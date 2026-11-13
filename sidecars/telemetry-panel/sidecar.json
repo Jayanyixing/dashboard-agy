@@ -1,0 +1,20 @@
+{
+  "command": "node",
+  "args": [
+    "server.mjs"
+  ],
+  "description": "Real-time telemetry dashboard for conversation turns, steps, token consumption, cache hit rate, and context window usage.",
+  "display_name": "Telemetry Dashboard",
+  "has_web_ui": true,
+  "restart_policy": "always",
+  "ui_config": {
+    "display_name": "Telemetry Dashboard",
+    "views": [
+      {
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "path": "/ui.html",
+        "title": "Telemetry Dashboard"
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "dashboard-agy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Antigravity Sidecar UI telemetry dashboard plugin for live turns, steps, tokens, cache hit rate, and context window monitoring.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "dev": "node sidecars/telemetry-panel/server.mjs --port 4321",
+    "install-plugin": "node scripts/install-plugin.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

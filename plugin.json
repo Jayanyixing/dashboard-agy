@@ -1,0 +1,12 @@
+{
+  "name": "dashboard-agy",
+  "displayName": "Telemetry Dashboard",
+  "version": "1.0.0",
+  "description": "Real-time auxiliary pane telemetry dashboard showing turns, steps, token totals, cache hit rate, estimated throughput, and context window usage.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "打开实时监控面板查看当前任务消耗",
+    "分析当前对话每轮的缓存命中率和上下文增长",
+    "总结本会话各轮 Token 分布"
+  ]
+}
